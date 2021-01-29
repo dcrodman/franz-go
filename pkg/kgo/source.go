@@ -294,6 +294,9 @@ func (s *source) takeBuffered() Fetch {
 	r := s.buffered
 	s.buffered = bufferedFetch{}
 	r.usedOffsets.finishUsingAllWith(func(o *cursorOffsetNext) {
+		if o.from.partition == 26 {
+			fmt.Println("partition 26, finish using all with", *o)
+		}
 		o.from.setOffset(o.cursorOffset)
 	})
 	close(s.sem)
@@ -331,6 +334,9 @@ func (s *source) createReq() *fetchRequest {
 	for i := 0; i < len(s.cursors); i++ {
 		c := s.cursors[cursorIdx]
 		cursorIdx = (cursorIdx + 1) % len(s.cursors)
+		if c.partition == 26 {
+			fmt.Println("in create req partition 26, usable?", c.usable())
+		}
 		if !c.usable() {
 			continue
 		}
@@ -423,6 +429,7 @@ func (s *source) fetch(consumerSession *consumerSession) (fetched bool) {
 	if err != nil {
 		close(requested)
 	} else {
+		fmt.Println("ISSUING REQ", req.session.id, req.session.epoch)
 		br.do(ctx, req, func(k kmsg.Response, e error) {
 			kresp, err = k, e
 			close(requested)
@@ -433,6 +440,7 @@ func (s *source) fetch(consumerSession *consumerSession) (fetched bool) {
 	case <-requested:
 		fetched = true
 	case <-ctx.Done():
+		fmt.Println("req canceled, finishing using all", req.session.id, req.session.epoch)
 		s.session.reset()
 		req.usedOffsets.finishUsingAll()
 		return
@@ -450,6 +458,7 @@ func (s *source) fetch(consumerSession *consumerSession) (fetched bool) {
 		case <-after.C:
 		case <-ctx.Done():
 		}
+		fmt.Println("ERRored req", req.session.id, req.session.epoch, err)
 		s.session.reset()
 		req.usedOffsets.finishUsingAll()
 		return
@@ -479,6 +488,7 @@ func (s *source) fetch(consumerSession *consumerSession) (fetched bool) {
 	select {
 	case <-handled:
 	case <-ctx.Done():
+		fmt.Println("killed while handling req resp")
 		req.usedOffsets.finishUsingAll()
 		s.session.reset()
 		return
@@ -518,6 +528,7 @@ func (s *source) fetch(consumerSession *consumerSession) (fetched bool) {
 	// no-op). We process the fetch session error now.
 	switch err := kerr.ErrorForCode(resp.ErrorCode); err {
 	case kerr.FetchSessionIDNotFound:
+		fmt.Println("fetch session id not found", s.session.id, s.session.epoch)
 		if s.session.epoch == 0 {
 			// If the epoch was zero, the broker did not even
 			// establish a session for us (and thus is maxed on
@@ -531,11 +542,14 @@ func (s *source) fetch(consumerSession *consumerSession) (fetched bool) {
 		req.usedOffsets.finishUsingAll()
 		return
 	case kerr.InvalidFetchSessionEpoch:
+		fmt.Println("invalid fetch session epoch", s.session.id, s.session.epoch)
 		s.cl.cfg.logger.Log(LogLevelInfo, "resetting fetch session", "err", err)
 		s.session.reset()
 		req.usedOffsets.finishUsingAll()
 		return
 	}
+
+	s.cl.cfg.logger.Log(LogLevelInfo, "received response session ID", "session_id", resp.SessionID)
 
 	if resp.SessionID > 0 {
 		s.session.bumpEpoch(resp.SessionID)
@@ -1116,6 +1130,8 @@ func (f *fetchRequest) AppendTo(dst []byte) []byte {
 		SessionEpoch:   f.session.epoch,
 		Rack:           f.rack,
 	}
+
+	fmt.Println("USING SESSION ID", f.session.id, f.session.epoch)
 
 	for topic, partitions := range f.usedOffsets {
 

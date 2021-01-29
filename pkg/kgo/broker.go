@@ -696,6 +696,10 @@ func (cxn *brokerCxn) writeRequest(ctx context.Context, enqueuedForWritingAt tim
 		}
 	})
 
+	if req.Key() == 1 && len(buf) < 1000 {
+		fmt.Printf("%x\n", buf)
+	}
+
 	if writeErr != nil {
 		return 0, ErrConnDead
 	}
@@ -737,8 +741,10 @@ func (cxn *brokerCxn) readConn(ctx context.Context, timeout time.Duration, enque
 		ctx = context.Background()
 	}
 	if timeout > 0 {
+		fmt.Println(time.Now(), "set read deadline", timeout)
 		cxn.conn.SetReadDeadline(time.Now().Add(timeout))
 	}
+	defer fmt.Println(time.Now(), "clearing read deadline")
 	defer cxn.conn.SetReadDeadline(time.Time{})
 	readDone := make(chan struct{})
 	go func() {
@@ -764,10 +770,12 @@ func (cxn *brokerCxn) readConn(ctx context.Context, timeout time.Duration, enque
 		}
 		buf = make([]byte, size)
 		var nread2 int
+		fmt.Println(time.Now(), "reading full responsE")
 		nread2, err = io.ReadFull(cxn.conn, buf)
 		nread += nread2
 		buf = buf[:nread2]
 		if err != nil {
+			fmt.Println(time.Now(), "read full err", err)
 			err = ErrConnDead
 			return
 		}
@@ -775,9 +783,11 @@ func (cxn *brokerCxn) readConn(ctx context.Context, timeout time.Duration, enque
 	select {
 	case <-readDone:
 	case <-cxn.cl.ctx.Done():
+		fmt.Println("client ctx done killing read")
 		cxn.conn.SetReadDeadline(time.Now())
 		<-readDone
 	case <-ctx.Done():
+		fmt.Println("req ctx done killing read")
 		cxn.conn.SetReadDeadline(time.Now())
 		<-readDone
 	}
@@ -794,6 +804,10 @@ func (cxn *brokerCxn) readResponse(ctx context.Context, timeout time.Duration, e
 			h.OnRead(cxn.b.meta, key, nread, readWait, timeToRead, err)
 		}
 	})
+
+	if key == 1 && len(buf) < 1000 {
+		fmt.Printf("%x\n", buf)
+	}
 
 	if err != nil {
 		return nil, err

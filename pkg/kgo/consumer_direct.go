@@ -1,6 +1,9 @@
 package kgo
 
-import "regexp"
+import (
+	"regexp"
+	"fmt"
+)
 
 // DirectConsumeOpt is an option to configure direct topic / partition consuming.
 type DirectConsumeOpt interface {
@@ -35,6 +38,7 @@ func ConsumeTopics(offset Offset, topics ...string) DirectConsumeOpt {
 // offsets on partitions in this option are used in favor of the more general
 // topic offset from ConsumeTopics.
 func ConsumePartitions(partitions map[string]map[int32]Offset) DirectConsumeOpt {
+	fmt.Println("setting consume partitions", partitions)
 	return directConsumeOpt{func(cfg *directConsumer) { cfg.partitions = partitions }}
 }
 

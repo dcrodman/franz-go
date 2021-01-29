@@ -2,6 +2,7 @@ package kgo
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -272,6 +273,7 @@ func (h assignHow) String() string {
 // assignPartitions, called under the consumer's mu, is used to set new
 // cursors or add to the existing cursors.
 func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how assignHow) {
+	fmt.Println("assigning", assignments, "how", how)
 	var session *consumerSession
 	var loadOffsets listOrEpochLoads
 	defer func() {
@@ -304,6 +306,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 							usedCursor.unset()
 							shouldKeep = false
 						} else { // how == assignSetMatching
+							fmt.Println("setting in assign", assignPart.at, assignPart.epoch)
 							usedCursor.setOffset(cursorOffset{
 								offset:            assignPart.at,
 								lastConsumedEpoch: assignPart.epoch,
@@ -375,6 +378,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 			// request which is useless for us, or a request is
 			// specified without a known epoch.
 			if offset.at >= 0 && offset.epoch >= 0 {
+				fmt.Println("adding load type epoch in assign", offset)
 				loadOffsets.addLoad(topic, partition, loadTypeEpoch, offsetLoad{
 					replica: -1,
 					Offset:  offset,
@@ -392,6 +396,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 			if offset.at >= 0 && partition >= 0 && partition < int32(len(topicParts.partitions)) {
 				part := topicParts.partitions[partition]
 				cursor := part.cursor
+				fmt.Println("setting in assign below", offset.at, part.leaderEpoch)
 				cursor.setOffset(cursorOffset{
 					offset:            offset.at,
 					lastConsumedEpoch: part.leaderEpoch,
@@ -401,6 +406,7 @@ func (c *consumer) assignPartitions(assignments map[string]map[int32]Offset, how
 				continue
 			}
 
+			fmt.Println("adding load type list in assign", offset)
 			loadOffsets.addLoad(topic, partition, loadTypeList, offsetLoad{
 				replica: -1,
 				Offset:  offset,
@@ -992,6 +998,7 @@ func (cl *Client) listOffsetsForBrokerLoad(ctx context.Context, broker *broker, 
 			offset := rPartition.Offset + loadPart.relative
 			if len(rPartition.OldStyleOffsets) > 0 { // if we have any, we used list offsets v0
 				offset = rPartition.OldStyleOffsets[0] + loadPart.relative
+				fmt.Println("USING OLD STYLE OFFSETS", rPartition.OldStyleOffsets, offset)
 			}
 			if loadPart.at >= 0 {
 				offset = loadPart.at + loadPart.relative // we obey exact requests, even if they end up past the end
@@ -1103,6 +1110,7 @@ func (o offsetLoadMap) buildListReq(isolationLevel int8) *kmsg.ListOffsetsReques
 			if timestamp >= 0 {
 				timestamp = -1
 			}
+			fmt.Println("list offsets partition", partition, "timestamp", offset.at)
 			parts = append(parts, kmsg.ListOffsetsRequestTopicPartition{
 				Partition:          partition,
 				CurrentLeaderEpoch: offset.currentEpoch, // KIP-320
