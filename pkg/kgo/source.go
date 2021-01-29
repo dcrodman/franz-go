@@ -828,10 +828,12 @@ func (o *cursorOffsetNext) processRecordBatch(
 	rawRecords := batch.Records
 	if compression := byte(batch.Attributes & 0x0007); compression != 0 {
 		var err error
+		startLen := len(rawRecords)
 		if rawRecords, err = decompressor.decompress(rawRecords, compression); err != nil {
 			fp.Err = fmt.Errorf("unable to decompress batch: %v", err)
 			return
 		}
+		fmt.Println("decompress inflated", startLen, "bytes to", len(rawRecords), "bytes")
 	}
 	krecords, err := kmsg.ReadRecords(int(batch.NumRecords), rawRecords)
 	if err != nil {
